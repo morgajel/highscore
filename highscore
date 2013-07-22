@@ -1,0 +1,215 @@
+#!/usr/bin/perl -w
+
+###################################
+#
+# Highscore, the error reporting tool
+# Author: Jesse Morgan
+# Highscore provides a report in the form of "top 20 errors, by volume"
+#
+###################################
+
+use strict;
+use warnings;
+use Carp;
+use Data::Dumper;
+use Getopt::Long qw( :config auto_help );
+use Config::IniFiles;
+#use Confluence;
+#use Thread::Pool::Simple;
+use POSIX;
+use Time::Duration;
+#use Fcntl 'O_RDONLY';
+#use IPC::Open3;
+use File::ReadBackwards;
+
+#TODO Performance improvement- have parse_line return hashes
+my $starttime=time(); # Overall script starttime
+
+my $mainconfig = Config::IniFiles->new( -file => 'config.ini' )
+    or croak 'Could not open your config!';
+
+my $resultcount=100;    # number of results to report, e.g. "Top 100 errors"
+my $lines='all';        # Number of lines to check from end of file
+my $error='WARN';       # show all errors of WARN or higher importance.
+my $appname="default";  # Default name to display in output, also applies matching config filters
+
+my $startpoint = strftime( '%Y-%m-%d', localtime(time-60*60*24) ); #defaults to yesterday
+
+my $environment="prod";     # useful for labeling
+my $logfile="sample.log";   # default log if none is provided.
+my $spinner=1;              # Show a spinner for progress; disable if used in Jenkins
+my %errorLevels = (         
+        'FATAL'   => "FATAL",
+        'ERROR'   => "ERROR|FATAL",
+        'SEVERE'  => "SEVERE|ERROR|FATAL",
+        'WARN'    => "WARN|SEVERE|ERROR|FATAL",
+        'INFO'    => "INFO|WARN|SEVERE|ERROR|FATAL",
+        'DEBUG'   => "DEBUG|INFO|WARN|SEVERE|ERROR|FATAL"
+);
+
+
+# Get the command line options
+GetOptions (
+            'application=s' => \$appname, 
+            'errorlevel=s'  => \$error, 
+            'logfile=s'     => \$logfile, 
+            'lines=s'       => \$lines, 
+            'resultcount=s' => \$resultcount,
+            'startpoint=s'  => \$startpoint,
+            'environment=s' => \$environment,
+            "spinner!"      => \$spinner,
+            );
+
+my $errorlevel=$errorLevels{$error};
+
+
+my $errortable=&parse_data($mainconfig,$appname,$lines,$spinner,$logfile);
+print "errortable created.\n";
+
+
+###################################################################
+##  Generate page
+print "begin page generation\n";
+print &generate_content($resultcount,$lines,$logfile,$starttime,$errortable);
+print "content created.\n";
+
+
+#=================================================================
+#=================================================================
+#=================================================================
+sub generate_content{
+    my ($resultcount,$lines,$logfile,$starttime,$errortable)=@_;
+    my @content;
+
+    push @content, "Let's lets look at the top $resultcount errors in $lines lines in $logfile ...\n";
+    push @content,  "PLACE   SCORE   TYPE      NAME\n";
+    push @content,  "-----------------------------------------------------------------------------------\n";
+    my $count=1;
+    foreach my $key (reverse sort { $errortable->{$a} <=> $errortable->{$b} } keys %$errortable){
+        push @content, sprintf "%4d)  %6d   %s\n" , $count, $errortable->{$key}, $key;
+        if ( $resultcount ne "all" and $count==$resultcount){
+            last;
+        }
+        $count++;
+    }
+    push @content, "{noformat}";
+    my $endtime=time();
+    my $totaltime=duration($endtime-$starttime);
+    return @content;
+}
+
+
+
+
+
+
+sub parse_data {
+    my ( $config, $appname, $lines, $usespinner, $logfile ) = @_;
+
+
+    my $highscoreconfig = Config::IniFiles->new( -file => "default.ini" )   or croak "Couldn't open default.ini!\n";
+    my $appconfig=undef;
+    if ($appname ne "default"){
+        $appconfig = Config::IniFiles->new( -file => "$appname.ini" )||undef;
+    }
+
+    my $LOG  = File::ReadBackwards->new( "$logfile" ) or croak "\nCRITICAL! Can't read $logfile.\n\n" ;
+
+    if ($lines eq "all"){ # using  wc -l is faster.
+        #FIXME don't use backticks
+        $lines=(split ' ', `wc -l $logfile`)[0];
+        chomp $lines;
+    }
+    my $errortable;
+    $| = 1; # set the buffer flusher since we want all these prints on one line.
+    print "parsing $lines lines: ";
+
+
+    my $percentbar=1;
+    for (my $id=0; $id<$lines ; $id++){
+        $percentbar=draw_spinner($id, $lines,$percentbar) if ($usespinner);
+
+        my $string=filter_line($config,$errorlevel,$LOG->readline ,$highscoreconfig,$appconfig);
+
+        if ($string ne ''){
+            $errortable->{$string}= defined $errortable->{$string} ? $errortable->{$string}+1 : 1;
+        }
+    }
+    $LOG->close;
+    print "done\n";
+    return $errortable;
+}
+
+sub draw_spinner{
+    my ($id, $lines,$percentbar)=@_;
+    my $segments=20;
+    my @spinner= qw( | / - \ ) ;
+    my $meter=$lines/$segments; #We want 20 bars total
+    if ($id > $meter*$percentbar){
+        print " ". $percentbar/$segments*100 .'%...';
+        $percentbar+=1;
+    }
+    print $spinner[$id % scalar @spinner] ."\b" ;
+    return $percentbar;
+}
+
+sub filter_line{
+    my ($config,$errorlevel,$string,$highscoreconfig,$appconfig)=@_;
+
+        if ( !defined $string or $string =~ /^\s*\$/ or $string!~/\s+($errorlevel)\s+/){
+            return '' ;  #If string is undefined, empty or doesn't match our error level, eject.
+        }
+
+        #############################
+        # Grep and ignore blank lines- check generic, then app specific
+        foreach my $grepname( $highscoreconfig->val( 'Grep Strings', 'grep' )){
+            if ( $string =~ /$grepname/ig ){
+                return ''; #skip this log line
+            }
+        }
+        if (defined $appconfig){
+            #Grep for app-specific lines to ignore
+            foreach my $grepname( $appconfig->val( 'Grep Strings', 'grep' )){
+                if ( $string =~ /$grepname/ig ){
+                    return ''; #skip this log line
+                }
+            }
+        }
+        #############################
+        $string=~s/.*\s+($errorlevel)\s+/$1  / ;
+        #############################
+        # Regex replace generic slugs, then app-specific slugs
+        foreach my $regexname ( sort { (split ' ', $a, 2)[0] <=> (split ' ', $b, 2)[0]  } $highscoreconfig->Parameters('Replacements') ){
+            my $regex=$highscoreconfig->val('Replacements',$regexname);
+            #print "check $regex in $string\n";
+            if ($string =~/$regex/){
+                #print "replace  $regex with $regexname    on $string\n";
+                $regexname=(split ' ', $regexname,2)[1];
+                $string =~ s/$regex/$regexname/ig;
+            }
+        }
+
+        if (defined $appconfig){
+            foreach my $regexname ( sort { (split ' ', $a, 2)[0] <=> (split ' ', $b, 2)[0]  } $appconfig->Parameters('Replacements') ){
+                my $regex=$appconfig->val('Replacements',$regexname);
+                #print "check $regex in $string\n";
+                if ($string =~/$regex/){
+                    #print "replace  $regex with $regexname    on $string\n";
+                    $regexname=(split ' ', $regexname,2)[1];
+                    $string =~ s/$regex/$regexname/ig;
+                }
+            }
+        }
+
+        
+        $string=~s/>>/\033[1;31m__/g;
+        $string=~s/<</__\033[0m/g;
+
+        $string=~s/\[/\033[1;32m\[/;
+        $string=~s/\]/\]\033[0m/;
+
+        chomp $string;
+        return $string;
+}
+
+
