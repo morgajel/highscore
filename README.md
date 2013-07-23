@@ -3,6 +3,19 @@
 
 Parse a log4j file to find the most common errors.
 
+    [you@server:~/highscore]$ ./highscore --help
+
+    Usage: highscore [OPTION]...
+
+        --application=APPNAME   Name of the application that produced the log; matching config file will try to load.
+        --errorlevel=ERROR      Lowest log level to pay attention to; e.g. WARN lists WARN, SEVERE, ERROR and FATAL
+        --logfile=LOG           Location of the logfile you wish to parse.           
+        --lines=LINECOUNT       The number of lines from the bottom of the file that you wish to parse.
+        --resultcount=COUNT     The number of results to show in the resulting table
+        --no-spinner            Disable the text spinner showing process completion
+        --no-color              Disable the syntax highlighting
+        --help                  Display this help.
+
     [you@server:~/highscore]$ ./highscore  --lines=all --no-spinner --errorlevel=WARN --application=shopcart --logfile=friday-prod.log --resultcount=20
     parsing 28257 lines: done
     Let's lets look at the top 20 errors in all lines in friday-prod.log ...

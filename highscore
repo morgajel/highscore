@@ -33,11 +33,11 @@ my $lines='all';        # Number of lines to check from end of file
 my $error='WARN';       # show all errors of WARN or higher importance.
 my $appname="default";  # Default name to display in output, also applies matching config filters
 
-my $startpoint = strftime( '%Y-%m-%d', localtime(time-60*60*24) ); #defaults to yesterday
 
-my $environment="prod";     # useful for labeling
 my $logfile="sample.log";   # default log if none is provided.
 my $spinner=1;              # Show a spinner for progress; disable if used in Jenkins
+my $color=1;                # colorize the prompt; useful for visualizing.
+my $help=0;
 my %errorLevels = (         
         'FATAL'   => "FATAL",
         'ERROR'   => "ERROR|FATAL",
@@ -55,23 +55,43 @@ GetOptions (
             'logfile=s'     => \$logfile, 
             'lines=s'       => \$lines, 
             'resultcount=s' => \$resultcount,
-            'startpoint=s'  => \$startpoint,
-            'environment=s' => \$environment,
             "spinner!"      => \$spinner,
+            "color!"        => \$color,
+            "help"          => \$help,
             );
+
+
+if ($help){
+
+    print << "EOF"
+
+    Usage: highscore [OPTION]...
+
+        --application=APPNAME   Name of the application that produced the log; matching config file will try to load.
+        --errorlevel=ERROR      Lowest log level to pay attention to; e.g. WARN lists WARN, SEVERE, ERROR and FATAL
+        --logfile=LOG           Location of the logfile you wish to parse.           
+        --lines=LINECOUNT       The number of lines from the bottom of the file that you wish to parse.
+        --resultcount=COUNT     The number of results to show in the resulting table
+        --no-spinner            Disable the text spinner showing process completion
+        --no-color              Disable the syntax highlighting
+        --help                  Display this help.
+
+EOF
+;
+exit 0;
+}
+
+
 
 my $errorlevel=$errorLevels{$error};
 
 
-my $errortable=&parse_data($mainconfig,$appname,$lines,$spinner,$logfile);
-print "errortable created.\n";
+my $errortable=&parse_data($mainconfig,$appname,$lines,$spinner,$color,$logfile);
 
 
 ###################################################################
-##  Generate page
-print "begin page generation\n";
+##  Generate table
 print &generate_content($resultcount,$lines,$logfile,$starttime,$errortable);
-print "content created.\n";
 
 
 #=================================================================
@@ -92,9 +112,9 @@ sub generate_content{
         }
         $count++;
     }
-    push @content, "{noformat}";
     my $endtime=time();
     my $totaltime=duration($endtime-$starttime);
+    push @content, "Ran in $totaltime seconds.\n";
     return @content;
 }
 
@@ -104,7 +124,7 @@ sub generate_content{
 
 
 sub parse_data {
-    my ( $config, $appname, $lines, $usespinner, $logfile ) = @_;
+    my ( $config, $appname, $lines, $usespinner,$color, $logfile ) = @_;
 
 
     my $highscoreconfig = Config::IniFiles->new( -file => "default.ini" )   or croak "Couldn't open default.ini!\n";
@@ -129,7 +149,7 @@ sub parse_data {
     for (my $id=0; $id<$lines ; $id++){
         $percentbar=draw_spinner($id, $lines,$percentbar) if ($usespinner);
 
-        my $string=filter_line($config,$errorlevel,$LOG->readline ,$highscoreconfig,$appconfig);
+        my $string=filter_line($config,$errorlevel,$LOG->readline ,$highscoreconfig,$appconfig,$color);
 
         if ($string ne ''){
             $errortable->{$string}= defined $errortable->{$string} ? $errortable->{$string}+1 : 1;
@@ -201,13 +221,16 @@ sub filter_line{
             }
         }
 
-        
-        $string=~s/>>/\033[1;31m__/g;
-        $string=~s/<</__\033[0m/g;
+        if ($color){        
+            $string=~s/>>/\033[1;31m__/g;
+            $string=~s/<</__\033[0m/g;
+            $string=~s/\[/\033[1;32m\[/;
+            $string=~s/\]/\]\033[0m/;
+        }else{
+            $string=~s/>>/__/g;
+            $string=~s/<</__/g;
 
-        $string=~s/\[/\033[1;32m\[/;
-        $string=~s/\]/\]\033[0m/;
-
+        }
         chomp $string;
         return $string;
 }
