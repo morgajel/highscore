@@ -8,7 +8,7 @@ Parse a log4j file to find the most common errors.
     Let's lets look at the top 20 errors in all lines in friday-prod.log ...
     PLACE   SCORE   TYPE      NAME
     -----------------------------------------------------------------------------------
-       1)     481   SEVERE  <span style="color:green">[com.example.crm.shopcart.servlet.SessionListener]</span> (ContainerBackgroundProcessor[StandardEngine[jboss.web]]) Error setting transaction state after session expired.: java.lang.NullPointerException
+       1)     481   SEVERE  [com.example.crm.shopcart.servlet.SessionListener] (ContainerBackgroundProcessor[StandardEngine[jboss.web]]) Error setting transaction state after session expired.: java.lang.NullPointerException
        2)      74   SEVERE  [com.example.crm.shopcart.action.ErrorAction] __AJP__ __JSESSIONID__ 
        3)      68   WARN  [org.apache.fop.apps.FOUserAgent] __AJP__ Line 1 of a paragraph overflows the available area by __MILLIPOINTS__ (No context info available)
        4)      43   WARN  [org.jboss.jca.adapters.jdbc.local.LocalManagedConnectionFactory] __AJP__ Destroying connection that is not valid, due to the following exception: com.mysql.jdbc.JDBC4Connection__MEMAREA__: com.mysql.jdbc.exceptions.jdbc4.CommunicationsException: Communications link failure
