@@ -1,7 +1,6 @@
 #highscore
-=========
 
-Parse a log4j file to find the most common errors. Parser works by using customs regexes to tokenize common patterns in order to better identify "near idntical" errors. This may include datestamps, JSessionIDs, ip:port combinations, or memory addresses. Regexes are completely customizable by application.  Highscore has recently been rewritten to work with the default log formatting for JBoss EAP 6.0.1, so your mileage may vary.
+**Parse a log4j file to find the most common errors.** Parser works by using customs regexes to tokenize common patterns in order to better identify "near idntical" errors. This may include datestamps, JSessionIDs, ip:port combinations, or memory addresses. Regexes are completely customizable by application.  Highscore has recently been rewritten to work with the default log formatting for JBoss EAP 6.0.1, so your mileage may vary.
 
 
 
@@ -71,12 +70,14 @@ So what can we learn from this simplification?
 ## Tuning
 
 The first time you run highscore, you may see several entries that look near identical:
+
        17)      1   WARN  [org.apache.fop.apps.FOUserAgent] __AJP__ Line 1 of a paragraph overflows the available area by 11253 millipoints (No context info available)
        18)      1   WARN  [org.apache.fop.apps.FOUserAgent] __AJP__ Line 1 of a paragraph overflows the available area by 23934 millipoints (No context info available)
        19)      1   WARN  [org.apache.fop.apps.FOUserAgent] __AJP__ Line 1 of a paragraph overflows the available area by 11395 millipoints (No context info available)
        20)      1   WARN  [org.apache.fop.apps.FOUserAgent] __AJP__ Line 1 of a paragraph overflows the available area by 19578 millipoints (No context info available)
 
 By adding a new regex to the configuration (something like line 2):
+
     [Replacements]
         1 >>SEARCH_TERM<<        = bogusresultthatwontmatch
         2 >>MILLIPOINTS<<        = \d+ millipoints\.
